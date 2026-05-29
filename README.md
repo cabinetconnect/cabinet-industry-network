@@ -28,3 +28,4 @@ cin-signups
 ```
 
 That submit block can be replaced later with Formspree, Airtable, Google Sheets or Supabase without changing the page layout.
+The current form data shape is also suitable for Tally or any other tool that accepts name, email, state, role and interest fields.

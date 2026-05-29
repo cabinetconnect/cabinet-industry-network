@@ -7,8 +7,6 @@ const CIN_BRAND = {
   email: "hello@cabinetindustrynetwork.com.au",
   logoHeader: "assets/cin-logo-header.png",
   logoFooter: "assets/cin-logo-footer.png",
-  storageKey: "cin-signups",
-  memoryKey: "__cinSignups",
 };
 
 const FORM_INTEGRATION_TARGETS = "Google Sheets, Airtable, Tally, Formspree or Supabase";
@@ -543,28 +541,6 @@ function Field({ label, id, children }) {
   );
 }
 
-function readStoredSignups() {
-  try {
-    const saved = window.localStorage?.getItem(CIN_BRAND.storageKey);
-    return saved ? JSON.parse(saved) : [];
-  } catch {
-    return window[CIN_BRAND.memoryKey] || [];
-  }
-}
-
-function saveSignup(record) {
-  const nextRecords = [...readStoredSignups(), record];
-  window[CIN_BRAND.memoryKey] = nextRecords;
-
-  try {
-    window.localStorage?.setItem(CIN_BRAND.storageKey, JSON.stringify(nextRecords));
-  } catch {
-    return nextRecords;
-  }
-
-  return nextRecords;
-}
-
 function SignupForm({ selectedInterest }) {
   const initialForm = useMemo(
     () => ({
@@ -577,7 +553,8 @@ function SignupForm({ selectedInterest }) {
     [],
   );
   const [form, setForm] = useState(initialForm);
-  const [submitted, setSubmitted] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState("idle");
+  const [submitMessage, setSubmitMessage] = useState("");
 
   useEffect(() => {
     if (selectedInterest) {
@@ -586,27 +563,53 @@ function SignupForm({ selectedInterest }) {
   }, [selectedInterest]);
 
   const updateField = (field) => (event) => {
-    setSubmitted(false);
+    setSubmitStatus("idle");
+    setSubmitMessage("");
     setForm((current) => ({ ...current, [field]: event.target.value }));
   };
 
-  const submitForm = (event) => {
+  const submitForm = async (event) => {
     event.preventDefault();
     const record = {
-      id: window.crypto?.randomUUID ? window.crypto.randomUUID() : String(Date.now()),
-      submittedAt: new Date().toISOString(),
-      ...form,
+      name: form.name.trim(),
+      email: form.email.trim(),
+      state: form.state,
+      role: form.role,
+      interest: form.interest,
     };
 
-    saveSignup(record);
-    setSubmitted(true);
-    setForm({
-      name: "",
-      email: "",
-      state: "",
-      role: "",
-      interest: selectedInterest || "",
-    });
+    setSubmitStatus("loading");
+    setSubmitMessage("");
+
+    try {
+      const response = await fetch("/api/signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(record),
+      });
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "The signup could not be saved.");
+      }
+
+      setSubmitStatus("success");
+      setSubmitMessage("Thanks for joining Cabinet Industry Network. We'll be in touch as the platform develops.");
+      setForm({
+        name: "",
+        email: "",
+        state: "",
+        role: "",
+        interest: selectedInterest || "",
+      });
+    } catch (error) {
+      setSubmitStatus("error");
+      setSubmitMessage(
+        `Sorry, your signup could not be saved. Please try again or email ${CIN_BRAND.email}.`,
+      );
+    }
   };
 
   return e(
@@ -700,26 +703,31 @@ function SignupForm({ selectedInterest }) {
       "button",
       {
         type: "submit",
+        disabled: submitStatus === "loading",
         className:
-          "mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#111a1f] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#1a252b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c4933d]",
+          "mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#111a1f] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#1a252b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c4933d] disabled:cursor-wait disabled:opacity-70",
       },
       e(Icon, { name: "send", className: "h-4 w-4" }),
-      "Register interest",
+      submitStatus === "loading" ? "Saving..." : "Register interest",
     ),
-    submitted &&
+    submitMessage &&
       e(
         "div",
         {
-          role: "status",
-          className:
-            "mt-4 rounded-lg border border-[#b8c7bc] bg-[#eef5ef] px-4 py-3 text-sm font-semibold text-[#304737]",
+          role: submitStatus === "error" ? "alert" : "status",
+          className: [
+            "mt-4 rounded-lg border px-4 py-3 text-sm font-semibold",
+            submitStatus === "error"
+              ? "border-red-200 bg-red-50 text-red-800"
+              : "border-[#b8c7bc] bg-[#eef5ef] text-[#304737]",
+          ].join(" "),
         },
-        "Thanks for joining Cabinet Industry Network. We'll be in touch as the platform develops.",
+        submitMessage,
       ),
     e(
       "p",
       { className: "mt-4 text-xs leading-5 text-neutral-500" },
-      `No spam. This placeholder form saves locally today and is structured to connect to ${FORM_INTEGRATION_TARGETS} later.`,
+      `No spam. Submissions are sent securely to Google Sheets, and the same field structure can be reused later with ${FORM_INTEGRATION_TARGETS}.`,
     ),
   );
 }
